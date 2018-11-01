@@ -1,0 +1,398 @@
+---
+title: "HG002 PacBio CCS Small Variants"
+author: "Nate Olson"
+date: '`r Sys.Date()`'
+output: 
+    bookdown::html_document2:
+        toc: true
+        toc_float: true
+        df_print: paged
+        code_folding: hide
+---
+
+```{r}
+library(happyR)
+library(tidyverse)
+```
+
+
+# Overview
+Opportunity to correct mistakes in and expand upon the HG002 high-confidence regions.
+* dataset
+* variant callsets
+* benchmarking
+
+# Approach/ Methods
+• Stratified comparison to our current small variant benchmark (v3.3.2). Preliminarily, generally very high accuracy except in homopolymers
+	- Two SNV+indel callsets: GATK4 and DeepVariant.
+	- Run benchmarking tool on callsets GRCh37
+		○ Started benchmarking run 10/29 ~ 7 PM
+			* Took screenshot will send to Justin with results
+	- Summarize results
+		○ Subsets to look at 
+			*
+			HG002allgenomespecific
+			HG002allgenomespecificandifficult
+			alldifficultregions
+			decoy
+			lowcmp_AllRepeats_51to200bp_gt95identity_merged_slop5
+			lowcmp_AllRepeats_gt200bp_gt95identity_merged_slop5
+			lowcmp_AllRepeats_gt95identity_slop5
+			lowcmp_AllRepeats_lt51bpTRs_gt95identity_merged_slop5
+			lowcmp_AllRepeats_lt51bp_gt95identity_merged_slop5
+			lowcmp_SimpleRepeat_homopolymer_6to10
+			lowcmp_SimpleRepeat_homopolymer_gt10
+			lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5
+			map_all
+			map_l250_m0_e0
+			notinHG002allgenomespecificandifficult
+			notinalldifficultregions
+			notinlowcmp_AllRepeats_gt95identity_slop5
+			segdup
+
+
+## Manual Curation
+For the manual curation, based on my previous looks at their data, I’d suggest randomly sampling 10 FP and 10 FN SNPs and 10 FP/FN indels from sites that fall in any of these 3 categories (lowcmp_SimpleRepeat_homopolymer_6to10, lowcmp_SimpleRepeat_homopolymer_gt10, lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5), and randomly sampling 10 FP/FN SNPs and 10 FP/FN indels from the remaining sites. Especially for indels, most of the errors are in homopolymers, so it’s helpful to segregate these. For SNPs, it might also be useful to select 10 random from the most difficult to map regions (map_l250_m0_e0), unless most of the non-homopolymer SNPs are in these regions. Definitely let me know if your look at the data suggests a different strategy though! I can help with the manual curation when I return from AMP.
+
+## Benchmark Region Expansion Estimate
+• Some estimate of how many extra variants and regions CCS might help add to the GIAB benchmark. Perhaps, regions with good MQ and coverage excluding homopolymers, and the CCS variants in these regions.
+	- Need to work out approach
+
+# Results 
+
+## Benchmarking  
+```{r}
+gatk_hap <- read_happy("data/happy_output/results/result_1")
+deep_hap <- read_happy("data/happy_output/results/result_2")
+```
+
+```{r}
+gatk_ext_df <- gatk_hap$extended %>% 
+    filter(Subtype == "*") %>% 
+    ## Excluding non-HG002 genome specific stratifications
+    filter(!str_detect(Subset, "HG00[1,3,4,5]")) %>% 
+    ## excluding strat with < 1000 obs - lack of statistical power
+    filter(Subset.Size > 1000) #%>% 
+    ## Subset must have at least one variant in region
+    # filter(Subset.IS_CONF.Size > 0) 
+
+gatk_metric_df <- gatk_ext_df %>% 
+    group_by(Type, Subset) %>% 
+    select(contains("METRIC")) %>% 
+    gather("Metric", "Value", -Type, -Subset) 
+``` 
+
+#### Metric Distributions
+```{r}
+gatk_metric_df %>% 
+    filter(Metric != "METRIC.Frac_NA") %>%
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    ggplot() + 
+    geom_histogram(aes(x = Value)) + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw()
+```
+
+#### High Level Stratifications
+Overall high precision and recall for SNPs. 
+High recall for indels not in difficult region, though lower precision. 
+The high frac_NA for SNPs in all difficult regions along with relatively high precision and recall indicates this call set can be used to expand the benchmark callset. 
+
+```{r}
+## Do we have all difficult regions not in HG002allgenomespecific
+high_level_strat <- c("*",
+                       "alldifficultregions",
+                       "notinHG002allgenomespecificandifficult",
+                       "notinalldifficultregions")
+
+
+
+
+gatk_ext_df %>% 
+    filter(Subset %in% high_level_strat) %>% 
+    select(Type, Subset, Filter, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, -Filter, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = Filter), 
+                        color = "grey20", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -45, hjust = 0))
+```
+
+```{r}
+gatk_ext_df %>% 
+    filter(Subset %in% high_level_strat) %>% 
+    filter(Filter == "PASS") %>% 
+    rename(Recall = METRIC.Recall, 
+           Precision = METRIC.Precision, 
+           F1 = METRIC.F1_Score, 
+           Frac_NA = METRIC.Frac_NA) %>%
+    select(Type, Subset, Recall, Precision, F1, Frac_NA, Subset.Size) %>% 
+    knitr::kable(digits = 3, 
+                 caption = "Metrics for high level stratifications.")
+```
+
+### Precision-Recall Relationship
+Relationships between precision and recall across strata
+```{r message = FALSE, fig.cap = "Relationship between precision and recall for all stratifications, excluding different repeat units."}
+gg <- gatk_ext_df %>%
+    filter(!str_detect(Subset, "unit=")) %>% 
+    filter(Subset.IS_CONF.Size > 0) %>% 
+    ggplot() + 
+    geom_point(aes(x = METRIC.Recall, 
+                   y = METRIC.Precision, 
+                   fill = Filter,
+                   alpha = log10(Subset.Size),
+                   text = Subset),
+               shape = 19, stroke = 0.25) + 
+    facet_wrap(~Type) + 
+    theme_bw()
+plotly::ggplotly(gg)
+```
+
+
+```{r, fig.cap = "Relationship between precision and recall for a subset of the stratifications."}
+strat_of_interest <- c("*","HG002allgenomespecific",
+                       "HG002allgenomespecificandifficult",
+                       "alldifficultregions","decoy",
+                       "lowcmp_AllRepeats_51to200bp_gt95identity_merged_slop5",
+                       "lowcmp_AllRepeats_gt200bp_gt95identity_merged_slop5",
+                       "lowcmp_AllRepeats_gt95identity_slop5",
+                       "lowcmp_AllRepeats_lt51bpTRs_gt95identity_merged_slop5",
+                       "lowcmp_AllRepeats_lt51bp_gt95identity_merged_slop5",
+                       "lowcmp_SimpleRepeat_homopolymer_6to10",
+                       "lowcmp_SimpleRepeat_homopolymer_gt10",
+                       "lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5",
+                       "map_all","map_l250_m0_e0",
+                       "notinHG002allgenomespecificandifficult",
+                       "notinalldifficultregions",
+                       "notinlowcmp_AllRepeats_gt95identity_slop5","segdup")
+
+gg <- gatk_ext_df %>% filter(Subset %in% strat_of_interest) %>% 
+    ggplot() + 
+    geom_point(aes(x = METRIC.Recall, 
+                   y = METRIC.Precision, 
+                   fill = Filter,
+                   alpha = log10(Subset.Size),
+                   text = Subset),
+               shape = 19, stroke = 0.25) + 
+    facet_wrap(~Type) + 
+    theme_bw()
+plotly::ggplotly(gg)
+```
+
+### Difficult Regions
+__TODO__ Add horizontal line for overall metric values as reference
+
+#### GC Impact
+```{r fig.cap = "Benchmarking metrics by GC content for 100 bp windows with 50 bp slop." }
+gatk_ext_df %>% 
+    filter(str_detect(Subset,"gc")) %>% 
+    mutate(Subset = str_remove(Subset, "gc_l100_gc")) %>% 
+    mutate(Subset = str_remove(Subset, "_slop50")) %>% 
+    mutate(Subset = str_replace(Subset, "or", " or ")) %>%
+    mutate(Subset = str_replace(Subset, "to", " to ")) %>%
+    mutate(Subset = str_replace(Subset, "lt", "<")) %>%
+    mutate(Subset = str_replace(Subset, "gt", ">")) %>%
+    mutate(Subset = fct_relevel(Subset, 
+                                c(">85","<25 or >65", "<30 or >55"), 
+                                after = Inf)) %>% 
+    select(Type, Subset, Filter, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, -Filter, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = Filter), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -90)) +
+    labs(x = "% GC for 100 bp windows")
+```
+
+#### Low Complexity 
+
+##### Simple Repeats
+__TODO__ Fix order
+
+```{r fig.cap = "Benchmarking metrics for different types of simple repeats." }
+gatk_ext_df %>% 
+    filter(str_detect(Subset,"lowcmp_SimpleRepeat"),
+           !str_detect(Subset,"unit")) %>% 
+    filter(Subset.IS_CONF.Size > 0) %>% 
+    mutate(Subset = str_remove(Subset, "lowcmp_SimpleRepeat_")) %>%
+    mutate(Subset = str_remove(Subset, "_slop5")) %>%
+    mutate(Subset = str_replace(Subset, "_", " ")) %>% 
+    mutate(Subset = str_replace(Subset, "to", " to ")) %>%
+    mutate(Subset = str_replace(Subset, "gt", ">")) %>%
+    select(Type, Subset, Filter, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, -Filter, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = Filter), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -90))
+```
+
+##### TRDB
+__Q__ Difference between all_gt95identity_merged and all_merged 
+__TODO__ Fix order
+
+```{r fig.cap = "Benchmarking metrics for TRDB." }
+gatk_ext_df %>% 
+    filter(str_detect(Subset,"Human_Full_Genome"),
+           !str_detect(Subset,"unit")) %>% 
+    filter(Subset.IS_CONF.Size > 0) %>%
+    mutate(Subset = str_remove(Subset, "lowcmp_Human_Full_Genome_TRDB_hg19_150331_")) %>%
+    mutate(Subset = str_remove(Subset, "_gt95identity_merged")) %>%
+    mutate(Subset = str_replace(Subset, "_", " ")) %>%
+    mutate(Subset = str_replace(Subset, "to", " to ")) %>%
+    mutate(Subset = str_replace(Subset, "lt", " <")) %>%
+    mutate(Subset = str_replace(Subset, "gt", " >")) %>%
+    select(Type, Subset, Filter, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, -Filter, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = Filter), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -90))
+```
+
+##### All Repeats
+__TODO__ Fix order, add figure caption describing stratifications
+```{r fig.cap = "Benchmarking metrics for all repeats."}
+gatk_ext_df %>% 
+    filter(str_detect(Subset,"AllRepeats"),
+           !str_detect(Subset,"unit")) %>% 
+    filter(Subset.IS_CONF.Size > 0) %>%
+    mutate(Subset = str_remove(Subset, "lowcmp_AllRepeats_")) %>%
+    mutate(Subset = str_remove(Subset, "_gt95identity_merged")) %>%
+    mutate(Subset = str_replace(Subset, "_", " ")) %>%
+    mutate(Subset = str_replace(Subset, "to", " to ")) %>%
+    mutate(Subset = str_replace(Subset, "lt", "<")) %>%
+    mutate(Subset = str_replace(Subset, "gt", ">")) %>%
+    select(Type, Subset, Filter, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, -Filter, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = Filter), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -90))
+```
+
+
+##### Segmental Duplications
+```{r fig.cap = "Segmental duplications"}
+gatk_ext_df %>% 
+    filter(str_detect(Subset,"segdup")) %>% 
+    select(Type, Subset, Filter, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, -Filter, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = Filter), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -90))
+```
+
+##### Mappping
+__TODO__ Fix order and clean-up names
+__Q__ What is Siren
+```{r fig.cap = "Mapping." }
+gatk_ext_df %>% 
+    filter(str_detect(Subset,"map"),
+           !str_detect(Subset,"unit")) %>% 
+    filter(Subset.IS_CONF.Size > 0) %>%
+    mutate(Subset = str_remove(Subset, "map_l")) %>%
+    mutate(Subset = str_replace_all(Subset, "_", " ")) %>%
+    # mutate(Subset = str_replace(Subset, "to", " to ")) %>%
+    # mutate(Subset = str_replace(Subset, "lt", " <")) %>%
+    # mutate(Subset = str_replace(Subset, "gt", " >")) %>%
+    select(Type, Subset, Filter, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, -Filter, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = Filter), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -90),
+          legend.position = "bottom")
+```
+
+### In/ Not-In Comparisons
+```{r fig.cap = "Benchmarking metrics for in/not-in comparisons"}
+gatk_ext_df %>% 
+    filter(Subset %in% c("notinfunc_cds","func_cds",
+                         "notinsegdupall", "segdupall",
+                         "notinalldifficultregions", "alldifficultregions")) %>% 
+    # filter(Subset.IS_CONF.Size > 0) %>%
+    # mutate(Subset = str_remove(Subset, "map_l")) %>%
+    # mutate(Subset = str_replace_all(Subset, "_", " ")) %>%
+    # mutate(Subset = str_replace(Subset, "to", " to ")) %>%
+    # mutate(Subset = str_replace(Subset, "lt", " <")) %>%
+    # mutate(Subset = str_replace(Subset, "gt", " >")) %>%
+    mutate(Subset = fct_relevel(Subset, "func_cds", after = 2)) %>%
+    mutate(Subset = fct_relevel(Subset, "notinsegdupall", after = Inf)) %>%
+    select(Type, Subset, Filter, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, -Filter, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = Filter), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -90),
+          legend.position = "bottom")
+```
+
+## Manual Curration 
+
+## Benchmark Region Expansion
+
+# Conclusions
+
+# Session Information
+## System Information
+```{r}
+s_info <- devtools::session_info(include_base = FALSE)
+pander::pander(s_info$platform)
+```
+
+## Package Versions
+```{r}
+s_info$packages %>% filter(`*` == "*") %>% select(-`*`) %>%
+    knitr::kable(booktabs = TRUE)
+```
