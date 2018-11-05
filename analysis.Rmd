@@ -10,7 +10,7 @@ output:
         code_folding: hide
 ---
 
-```{r}
+```{r load_packages, message = FALSE, echo = FALSE}
 library(happyR)
 library(tidyverse)
 ```
@@ -20,41 +20,32 @@ library(tidyverse)
 Analysis of small variant callsets generated from PacBio CCS data. 
 The long read - low error rate data can potentially correct mistakes in and expand the HG002 benchmark set.  
 
-* dataset
+* datasets  
 * variant callsets - Two SNV+indel callsets: GATK4 and DeepVariant against the GRCh37 reference.  
 * benchmarking - Callsets benchmarked against the HG002 V3.3.2 benchmark callset using the precisionFDA app, vcfeval + hap.py with custom stratifications 
 
 # Approach/ Methods
-Stratified comparison to our current small variant benchmark (v3.3.2). 
-
-- Subsets to look at 
-    - `*`  
-	- HG002allgenomespecific  
-	- HG002allgenomespecificandifficult  
-	- alldifficultregions  
-	- decoy  
-	- lowcmp_AllRepeats_51to200bp_gt95identity_merged_slop5  
-	- lowcmp_AllRepeats_gt200bp_gt95identity_merged_slop5  
-	- lowcmp_AllRepeats_gt95identity_slop5  
-	- lowcmp_AllRepeats_lt51bpTRs_gt95identity_merged_slop5  
-	- lowcmp_AllRepeats_lt51bp_gt95identity_merged_slop5  
-	- lowcmp_SimpleRepeat_homopolymer_6to10  
-	- lowcmp_SimpleRepeat_homopolymer_gt10  
-	- lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5  
-	- map_all  
-	- map_l250_m0_e0  
-	- notinHG002allgenomespecificandifficult  
-	- notinalldifficultregions  
-	- notinlowcmp_AllRepeats_gt95identity_slop5  
-	- segdup  
-
+## Benchmarking 
+- Stratified comparison to our current small variant benchmark (v3.3.2).  
+- Identify where callsets perform well and poorly  
+- Identify where callsets perform well with a high fraction of calls in a stratification outside the benchmark regions.  
 
 ## Manual Curation
-For the manual curation, based on my previous looks at their data, 
-I’d suggest randomly sampling 10 FP and 10 FN SNPs and 10 FP/FN indels from sites that fall in any of these 3 categories (lowcmp_SimpleRepeat_homopolymer_6to10, lowcmp_SimpleRepeat_homopolymer_gt10, lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5), 
-and randomly sampling 10 FP/FN SNPs and 10 FP/FN indels from the remaining sites.  
+A number of false positive and negative sites were randomly sampled to further evaluate the potential for using CCS callsets to correct errors in benchmark sets.
+A total of 80 variants were randomly sampled for manual curation.  
 
-Especially for indels, most of the errors are in homopolymers, so it’s helpful to segregate these. For SNPs, it might also be useful to select 10 random from the most difficult to map regions (map_l250_m0_e0), unless most of the non-homopolymer SNPs are in these regions. Definitely let me know if your look at the data suggests a different strategy though! I can help with the manual curation when I return from AMP.
+- 10 from each set  
+    - FP and FN  
+    - SNP and Indels  
+    - Target categories and other categories  
+
+Target categories - lowcmp_SimpleRepeat_homopolymer_6to10, lowcmp_SimpleRepeat_homopolymer_gt10, and lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5
+
+<!-- 
+Especially for indels, most of the errors are in homopolymers, so it’s helpful to segregate these. 
+For SNPs, it might also be useful to select 10 random from the most difficult to map regions (map_l250_m0_e0), unless most of the non-homopolymer SNPs are in these regions. 
+Definitely let me know if your look at the data suggests a different strategy though! I can help with the manual curation when I return from AMP. 
+-->
 
 ## Benchmark Region Expansion Estimate
 Estimating of how many extra variants and regions CCS might help add to the GIAB benchmark. Perhaps, regions with good MQ and coverage excluding homopolymers, and the CCS variants in these regions.  
@@ -64,6 +55,27 @@ Estimating of how many extra variants and regions CCS might help add to the GIAB
 # Results 
 
 ## Benchmarking  
+
+<!-- - Subsets to look at  -->
+<!--     - `*`   -->
+<!-- 	- HG002allgenomespecific   -->
+<!-- 	- HG002allgenomespecificandifficult   -->
+<!-- 	- alldifficultregions   -->
+<!-- 	- decoy   -->
+<!-- 	- lowcmp_AllRepeats_51to200bp_gt95identity_merged_slop5   -->
+<!-- 	- lowcmp_AllRepeats_gt200bp_gt95identity_merged_slop5   -->
+<!-- 	- lowcmp_AllRepeats_gt95identity_slop5   -->
+<!-- 	- lowcmp_AllRepeats_lt51bpTRs_gt95identity_merged_slop5   -->
+<!-- 	- lowcmp_AllRepeats_lt51bp_gt95identity_merged_slop5   -->
+<!-- 	- lowcmp_SimpleRepeat_homopolymer_6to10   -->
+<!-- 	- lowcmp_SimpleRepeat_homopolymer_gt10   -->
+<!-- 	- lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5   -->
+<!-- 	- map_all   -->
+<!-- 	- map_l250_m0_e0   -->
+<!-- 	- notinHG002allgenomespecificandifficult   -->
+<!-- 	- notinalldifficultregions   -->
+<!-- 	- notinlowcmp_AllRepeats_gt95identity_slop5   -->
+<!-- 	- segdup   -->
 
 ```{r message = FALSE}
 ## Loading data
@@ -96,21 +108,12 @@ gatk_metric_df <- gatk_ext_df %>%
 
 ```
 
-#### Metric Distributions
-```{r message = FALSE, warning = FALSE, fig.cap = "Metric value distributions for all stratifications."}
-gatk_metric_df %>% 
-    filter(Metric != "METRIC.Frac_NA") %>%
-    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
-    ggplot() + 
-    geom_histogram(aes(x = Value)) + 
-    facet_grid(Type~Metric, scales = "free") + 
-    theme_bw()
-```
 
-#### High Level Stratifications
-Overall high precision and recall for SNPs. 
-High recall for indels not in difficult region, though lower precision. 
-The high frac_NA for SNPs in all difficult regions along with relatively high precision and recall indicates that using this in the GIAB integration pipeline may result in expanded benchmark regions. 
+Overall high precision and recall for SNPs, and indels not in difficult regions. 
+DeepVariant performs consistently better than GATK4. 
+The high frac_NA for SNPs in all difficult regions along with relatively high precision and recall indicates that using this in the GIAB integration pipeline may result in expanded benchmark regions.  
+- Difficult regions with low indel recall and precision, specifically homopolymers and imperfect homopolymers 
+
 
 ```{r}
 ## Do we have all difficult regions not in HG002allgenomespecific
@@ -154,25 +157,6 @@ ext_trim_df %>%
                  caption = "Metrics for high level stratifications.")
 ```
 
-### Precision-Recall Relationship
-Relationships between precision and recall across strata
-```{r message = FALSE, fig.cap = "Relationship between precision and recall for all stratifications, excluding different repeat units."}
-gg <- ext_trim_df %>% 
-    filter(!str_detect(Subset, "unit=")) %>% 
-    filter(Subset.IS_CONF.Size > 0) %>% 
-    filter(Subtype == "*", Filter == "PASS") %>%
-    ggplot() + 
-    geom_point(aes(x = METRIC.Recall, 
-                   y = METRIC.Precision, 
-                   alpha = log10(Subset.Size),
-                   text = Subset),
-               shape = 19, stroke = 0.25) + 
-    facet_wrap(query_method~Type, scales = "free") + 
-    theme_bw() + 
-    labs(x = "Recall", y = "Precision")
-plotly::ggplotly(gg)
-```
-
 ```{r, fig.cap = "GATK4 and DeepVariant precision v. recall for a subset of the stratifications."}
 strat_of_interest <- c("*","HG002allgenomespecific",
                        "HG002allgenomespecificandifficult",
@@ -205,10 +189,179 @@ gg <- ext_trim_df %>%
 plotly::ggplotly(gg)
 ```
 
+
+
+__TODO__ Additional figure showing stratifications where the methods perform well and poorly
+- stratifications with low recall and precision
+
+Performance metrics are consistent across homopolymer units for homopolymers between 6 and 10 bp but but varies for homopolymers greater than 10 bp. 
+
+```{r fig.cap = "Performance in homopolymers."}
+ext_trim_df %>% 
+    filter(Subtype == "*") %>% 
+    filter(Filter == "PASS") %>% 
+    filter(str_detect(Subset,"homopolymer")) %>% 
+    filter(Subset.IS_CONF.Size > 0) %>% 
+    mutate(Subset = str_remove(Subset, "lowcmp_SimpleRepeat_")) %>%
+    mutate(Subset = str_remove(Subset, "_slop5")) %>%
+    mutate(Subset = str_replace(Subset, "_", " ")) %>% 
+    mutate(Subset = str_replace(Subset, "to", " to ")) %>%
+    mutate(Subset = str_replace(Subset, "gt", ">")) %>%
+        select(Type, Subset, query_method, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, 
+           -query_method, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = query_method), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -90),
+          legend.position = "bottom") + 
+    labs(x = "Simple Repeat Type", fill = "Callset")
+```
+DeepVariant worse recall for longer insertions. 
+```{r}
+ext_trim_df %>% 
+    filter(Type == "INDEL") %>% 
+    filter(Filter == "PASS") %>% 
+    filter(!str_detect(Subtype, "C")) %>% 
+    filter(str_detect(Subset,"homopolymer"),
+           !str_detect(Subset,"unit")) %>% 
+    filter(Subset.IS_CONF.Size > 0) %>% 
+    mutate(Subset = str_remove(Subset, "lowcmp_SimpleRepeat_")) %>%
+    mutate(Subset = str_remove(Subset, "_slop5")) %>%
+    mutate(Subset = str_replace(Subset, "_", " ")) %>% 
+    mutate(Subset = str_replace(Subset, "to", " to ")) %>%
+    mutate(Subset = str_replace(Subset, "gt", ">")) %>%
+    select(Subtype, Subset, query_method, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Subtype, -Subset, 
+           -query_method, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA", Metric != "1 - F1_Score") %>% 
+    ggplot() + geom_bar(aes(x = Subtype, y = Value, fill = query_method), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Metric~Subset, scales = "free") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = -90),
+          legend.position = "bottom") + 
+    labs(x = "Indel Subtype", fill = "Callset")
+```
+
+
+
+
+## Manual Curration 
+
+__TODO__ Randomly sampling variants
+
+```{r}
+# 
+# deep_vcf <- readVcf("data/happy_output/results/result_2.vcf.gz", 
+#                     genome = genome_obj)
+# 
+# get_var_df <- function(vcffile){
+#     require(VariantAnnotation)
+#     require(BSgenome.Hsapiens.1000genomes.hs37d5)
+#     
+#     ## Read VCF
+#     vcf <- readVcf(vcffile, genome = "BSgenome.Hsapiens.1000genomes.hs37d5")
+#     
+#     ## Generate tidy data frame
+#     
+#     
+# }
+```
+
+```{r}
+# ## Truth table classification
+# tt_class_df <- geno(gatk_vcf)[['BD']] %>% 
+#     as.data.frame() %>% 
+#     rownames_to_column(var = "variant") %>% 
+#     filter(QUERY == "FP" | TRUTH == "FN") %>% 
+#     as_tibble()
+# 
+# ## Variant type
+# var_type_df <- geno(gatk_vcf)[['BVT']] %>% 
+#     as.data.frame() %>% 
+#     rownames_to_column(var = "variant") %>% 
+#     filter(variant %in% tt_class_df$variant)
+# 
+# ## Filter 
+# var_filter_df <- data_frame(
+#     variant = rownames(gatk_vcf), 
+#     FILTER = rowRanges(gatk_vcf)$FILTER) %>% 
+#     filter(variant %in% tt_class_df$variant)
+# 
+# ## Stratifications
+# ## Need to figure out how to handle stratifications
+# # region_df <- 
+#     # info(head(gatk_vcf))[['Regions']] %>% 
+#     # as.data.frame() #%>%
+#     # rownames_to_column(var = "variant") # %>% 
+#     # filter(variant %in% tt_class_df$variant)
+# region_df
+# ## Combine data frames
+# var_df <- bind_cols(list(tt_class_df , 
+#                          var_type_df,
+#                          var_filter_df, 
+#                          region_df))
+```
+
+
+
+## Benchmark Region Expansion
+
+# Conclusions
+
+
+## Exploratory Analysis
+### Metric Distributions
+```{r message = FALSE, warning = FALSE, fig.cap = "Metric value distributions for all stratifications."}
+gatk_metric_df %>% 
+    filter(Metric != "METRIC.Frac_NA") %>%
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    ggplot() + 
+    geom_histogram(aes(x = Value)) + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw()
+```
+
+
+
+### Precision-Recall Relationship
+Relationships between precision and recall across strata
+```{r message = FALSE, fig.cap = "Relationship between precision and recall for all stratifications, excluding different repeat units."}
+gg <- ext_trim_df %>% 
+    filter(!str_detect(Subset, "unit=")) %>% 
+    filter(Subset.IS_CONF.Size > 0) %>% 
+    filter(Subtype == "*", Filter == "PASS") %>%
+    ggplot() + 
+    geom_point(aes(x = METRIC.Recall, 
+                   y = METRIC.Precision, 
+                   alpha = log10(Subset.Size),
+                   text = Subset),
+               shape = 19, stroke = 0.25) + 
+    facet_wrap(query_method~Type, scales = "free") + 
+    theme_bw() + 
+    labs(x = "Recall", y = "Precision")
+plotly::ggplotly(gg)
+```
+
+
 ### Difficult Regions
-__TODO__ Add horizontal line for overall metric values as reference
 
 #### GC Impact
+GATK4 performance impacted by changes in GC more than DeepVariant. 
+Trends in performance relative GC are potentially confounded with low complexity regions.  
+
+
 ```{r fig.cap = "Benchmarking metrics by GC content for 100 bp windows with 50 bp slop." }
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
@@ -416,13 +569,17 @@ ext_trim_df %>%
     labs(x = "Stratification", fill = "Callset")
 ```
 
+### Performs well
+```{r}
+ext_trim_df %>% 
+    # filter(Subtype == "*") %>% 
+    filter(Filter == "PASS") %>%
+    filter(!str_detect(Subset, "unit")) %>% 
+    filter(METRIC.Recall >= 0.999, 
+           METRIC.Precision > 0.98)
+```
 
 
-## Manual Curration 
-
-## Benchmark Region Expansion
-
-# Conclusions
 
 # Session Information
 ## System Information
