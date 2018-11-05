@@ -262,59 +262,79 @@ ext_trim_df %>%
 __TODO__ Randomly sampling variants
 
 ```{r}
-# 
-# deep_vcf <- readVcf("data/happy_output/results/result_2.vcf.gz", 
-#                     genome = genome_obj)
-# 
-# get_var_df <- function(vcffile){
-#     require(VariantAnnotation)
-#     require(BSgenome.Hsapiens.1000genomes.hs37d5)
-#     
-#     ## Read VCF
-#     vcf <- readVcf(vcffile, genome = "BSgenome.Hsapiens.1000genomes.hs37d5")
-#     
-#     ## Generate tidy data frame
-#     
-#     
-# }
+
+get_var_df <- function(vcffile){
+    require(VariantAnnotation)
+    require(BSgenome.Hsapiens.1000genomes.hs37d5)
+
+    ## Read VCF
+    vcf <- readVcf(vcffile, genome = "BSgenome.Hsapiens.1000genomes.hs37d5")
+
+    ## Generate tidy data frame
+    ## Truth table classification
+    tt_class_df <- geno(vcf)[['BD']] %>%
+        as.data.frame() %>%
+        rownames_to_column(var = "variant") %>%
+        filter(QUERY == "FP" | TRUTH == "FN") %>%
+        as_tibble()
+    
+    ## Subsetting vcf for FP and FN
+    fpfn_vcf <- vcf[rownames(vcf) %in% tt_class_df$variant]
+    
+    ## Variant type
+    fpfn_df <- geno(fpfn_vcf)[['BVT']] %>%
+        as.data.frame() %>%
+        rownames_to_column(var = "variant") %>%
+        dplyr::rename(QUERY.Var = QUERY, TRUTH.Var = TRUTH) %>%
+        left_join(tt_class_df)
+    
+    ## Filter
+    fpfn_filter <- rowRanges(fpfn_vcf)$FILTER
+    
+    ## Stratifications
+    fpfn_regions <- info(fpfn_vcf)[['Regions']] %>% as.list()
+    
+    ## Combining into single data frame
+    fpfn_df %>%
+        add_column(FILTER = fpfn_filter,
+                   Regions = fpfn_regions)
+
+}
+
+annotate_var_df <-  function(var_df){
+    target_cats <- c("lowcmp_SimpleRepeat_homopolymer_6to10", 
+                 "lowcmp_SimpleRepeat_homopolymer_gt10",
+                 "lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5")
+    var_anno_df <- var_df %>% 
+        mutate(target_cat = if_else(str_detect(Regions, target_cats),
+                                    "target","non-target"))
+    
+    var_anno_df %>% 
+        mutate(var_cat = case_when( QUERY == "FP" & QUERY.Var == "INDEL" ~ "FP.INDEL",
+                                    QUERY == "FP" & QUERY.Var == "SNP" ~ "FP.SNP",
+                                    QUERY == "." & TRUTH.Var == "INDEL" ~ "FN.INDEL",
+                                    QUERY == "." & TRUTH.Var == "SNP" ~ "FN.SNP",
+                                    TRUE ~ "other")) #%>% 
+        # filter(var_cat != "other")
+}
+
+## Getting random subset
+anno_df <- list(gatk = "data/happy_output/results/result_1.vcf.gz",
+                deep = "data/happy_output/results/result_2.vcf.gz") %>% 
+    map(get_var_df) %>% 
+    map_dfr(annotate_var_df, .id = "callset")
+    
+
+var_random_df <- anno_df %>% 
+    filter(var_cat != "other") %>% 
+    group_by(callset, var_cat, target_cat) %>% 
+    sample_n(size = 10)
 ```
+
 
 ```{r}
-# ## Truth table classification
-# tt_class_df <- geno(gatk_vcf)[['BD']] %>% 
-#     as.data.frame() %>% 
-#     rownames_to_column(var = "variant") %>% 
-#     filter(QUERY == "FP" | TRUTH == "FN") %>% 
-#     as_tibble()
-# 
-# ## Variant type
-# var_type_df <- geno(gatk_vcf)[['BVT']] %>% 
-#     as.data.frame() %>% 
-#     rownames_to_column(var = "variant") %>% 
-#     filter(variant %in% tt_class_df$variant)
-# 
-# ## Filter 
-# var_filter_df <- data_frame(
-#     variant = rownames(gatk_vcf), 
-#     FILTER = rowRanges(gatk_vcf)$FILTER) %>% 
-#     filter(variant %in% tt_class_df$variant)
-# 
-# ## Stratifications
-# ## Need to figure out how to handle stratifications
-# # region_df <- 
-#     # info(head(gatk_vcf))[['Regions']] %>% 
-#     # as.data.frame() #%>%
-#     # rownames_to_column(var = "variant") # %>% 
-#     # filter(variant %in% tt_class_df$variant)
-# region_df
-# ## Combine data frames
-# var_df <- bind_cols(list(tt_class_df , 
-#                          var_type_df,
-#                          var_filter_df, 
-#                          region_df))
+var_random_df %>% knitr::kable()
 ```
-
-
 
 ## Benchmark Region Expansion
 
