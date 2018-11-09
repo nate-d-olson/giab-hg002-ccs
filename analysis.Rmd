@@ -17,33 +17,33 @@ library(happyR)
 library(tidyverse)
 library(googlesheets)
 ```
-__ISSUES__
-Confidence intervals for metrics
 
 # Overview
 Analysis of small variant callsets generated from PacBio CCS data. 
 The long read - low error rate data can potentially correct mistakes in and expand the HG002 benchmark set.  
 
-* datasets  
-* variant callsets - Two SNV+indel callsets: GATK4 and DeepVariant against the GRCh37 reference.  
-* benchmarking - Callsets benchmarked against the HG002 V3.3.2 benchmark callset using the precisionFDA app, vcfeval + hap.py with custom stratifications 
+* datasets - PacBio CCS 15kb libraries for HG002  
+* variant callsets - Three SNV+indel callsets: GATK4, DeepVariant, and DeepVariant with haplotype information. Variant calls were made against the GRCh37 reference.  
+* benchmarking - Callsets benchmarked against the HG002 V3.3.2 benchmark callset using the precisionFDA app, vcfeval + hap.py with GA4GH custom stratifications  
 
 # Approach/ Methods
 ## Benchmarking 
-- Stratified comparison to our current small variant benchmark (v3.3.2).  
+- Stratified comparison to our current small variant benchmark (v3.3.2).   
 - Identify where callsets perform well and poorly  
-- Identify where callsets perform well with a high fraction of calls in a stratification outside the benchmark regions.  
+- Identify where callsets perform well with a high fraction of calls in a stratification outside the benchmark regions.   
 
 ## Manual Curation
 A number of false positive and negative sites were randomly sampled to further evaluate the potential for using CCS callsets to correct errors in benchmark sets.
-A total of 80 variants were randomly sampled for manual curation.  
+A total of 60 variants were randomly sampled for manual curation.  
 
-- 10 from each set  
+- 5 from each set  
     - FP and FN  
     - SNP and Indels  
     - Target categories and other categories  
 
-Target categories - lowcmp_SimpleRepeat_homopolymer_6to10, lowcmp_SimpleRepeat_homopolymer_gt10, and lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5
+Along with 5 SNP and 5 Indel FP allele match errors.  
+
+Target categories - lowcmp_AllRepeats_gt95identity_slop5 and lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5
 
 <!-- 
 Especially for indels, most of the errors are in homopolymers, so it’s helpful to segregate these. 
@@ -54,8 +54,8 @@ Definitely let me know if your look at the data suggests a different strategy th
 ## Benchmark Region Expansion Estimate
 Estimating of how many extra variants and regions CCS might help add to the GIAB benchmark. Perhaps, regions with good MQ and coverage excluding homopolymers, and the CCS variants in these regions.  
 
-- Need to work out approach
-    - check out gvcf for good MQ and coverage  
+<!-- - Need to work out approach -->
+<!--     - check out gvcf for good MQ and coverage   -->
 
 # Results 
 
@@ -84,9 +84,10 @@ Estimating of how many extra variants and regions CCS might help add to the GIAB
 
 ```{r message = FALSE}
 ## Loading data
-hap_list <- paste0("data/happy_output/results/result_", c(1,2)) %>%
+hap_list <- c(paste0("data/happy_output/results/result_", c(1,2)),
+              "data/happy_output_deepVarHap/results/result_1") %>%
     map(read_happy) %>% 
-    set_names(c("GATK4","DeepVariant"))
+    set_names(c("GATK4","DeepVariant", "DeepVarHap"))
 
 ## Creating a tidy data frame
 extend_df <- hap_list %>% 
@@ -203,7 +204,7 @@ ext_trim_df %>%
     filter(Subtype == "*", Filter == "PASS") %>% 
     filter(Subset %in% strat_of_interest) %>% 
     dplyr::select(query_method, Type, Subset, contains("METRIC")) %>% 
-    DT::datatable()
+    DT::datatable(caption = "The three query methods (variant callsets) performance metrics for high level stratifications and stratifications with know poor performance, e.g. homopolymers.")
 ```
 
 
@@ -246,11 +247,11 @@ ext_trim_df %>%
     facet_grid(Type~Metric, scales = "free") + 
     theme_bw() + 
     theme(legend.position = "bottom") + 
-    labs(x = "Simple Repeat Type", fill = "Callset")
+    labs(x = "Simple Repeat Type", fill = "Homopolymer Type")
 ```
 
 
-```{r}
+```{r fig.cap = "DeepVariant performance metrics for homopolymers by unit."}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
@@ -282,7 +283,39 @@ ext_trim_df %>%
     labs(x = "Simple Repeat Type", fill = "Callset")
 ```
 
-```{r}
+```{r fig.cap = "DeepVariant with haplotype informaton performance metrics for homopolymers by unit."}
+ext_trim_df %>% 
+    filter(Subtype == "*") %>% 
+    filter(Filter == "PASS") %>% 
+    filter(str_detect(Subset,"homopolymer")) %>% 
+    filter(str_detect(Subset,"_unit")) %>% 
+    filter(Subset.IS_CONF.Size > 0) %>% 
+    mutate(Subset = str_remove(Subset, "lowcmp_SimpleRepeat_")) %>%
+    mutate(Subset = str_remove(Subset, "_slop5")) %>%
+    mutate(Subset = str_replace(Subset, "_", " ")) %>% 
+    mutate(Subset = str_replace(Subset, "to", " to ")) %>%
+    mutate(Subset = str_replace(Subset, "gt", ">")) %>%
+    dplyr::select(Type, Subset, query_method, contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, 
+           -query_method, -Subset.Size) %>% 
+    separate(Subset, c("Size", "Unit"), sep = "_") %>% 
+    mutate(Unit = str_remove(Unit, "unit=")) %>% 
+    mutate(Size = str_remove(Size, "homopolymer ")) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+    filter(query_method == "DeepVarHap") %>% 
+    ggplot() + geom_bar(aes(x = Size, y = Value, fill = Unit), 
+                        color = "grey40", width = 0.5, 
+                        position = "dodge", stat = "identity") + 
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(legend.position = "bottom") + 
+    labs(x = "Simple Repeat Type", fill = "Callset")
+```
+
+```{r fig.cap = "GATK4 performance metrics for homopolymers by unit."}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
@@ -312,7 +345,7 @@ ext_trim_df %>%
     facet_grid(Type~Metric, scales = "free") + 
     theme_bw() + 
     theme(legend.position = "bottom") + 
-    labs(x = "Simple Repeat Type", fill = "Callset")
+    labs(x = "Simple Repeat Type", fill = "Unit")
 ```
 
 
@@ -405,18 +438,17 @@ get_var_df <- function(vcffile){
 }
 
 annotate_var_df <-  function(var_df){
-    # target_cats <- c("lowcmp_SimpleRepeat_homopolymer_6to10", 
-    #                  "lowcmp_SimpleRepeat_homopolymer_gt10",
-    #                  "lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5",
-    #                  "lowcmp_SimpleRepeat_diTR_51to200")
-    target_cats <- c("lowcmp_AllRepeats_gt95identity_slop5")
     var_anno_df <- var_df %>% 
-        mutate(target_cat = if_else(str_detect(Regions, target_cats),
-                                    "target","non-target"))
-    
+        mutate(allrepeats = map_lgl(Regions, ~("lowcmp_AllRepeats_gt95identity_slop5" %in% .)),
+               imphomo = map_lgl(Regions, ~("lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5" %in% .)),
+               target_cat = if_else(allrepeats + imphomo == 0, "non-target","target")) %>%
+        dplyr::select(-allrepeats, -imphomo)
+
     mutate(var_anno_df, 
            var_cat = case_when( 
-               Q.bk == "am" | T.bk == "am" ~ "AM",
+               (Q.bk == "am" | T.bk == "am") & (Q.Var == "INDEL" | T.Var == "INDEL") ~ "AM.INDEL",
+               (Q.bk == "am" | T.bk == "am") & (Q.Var == "SNP" | T.Var == "SNP") ~ "AM.SNP",
+               # Q.bk == "am" | T.bk == "am" ~ "AM",
                QUERY == "FP" & Q.Var == "INDEL" ~ "FP.INDEL",
                QUERY == "FP" & Q.Var == "SNP" ~ "FP.SNP",
                QUERY == "." & T.Var == "INDEL" ~ "FN.INDEL",
@@ -426,10 +458,12 @@ annotate_var_df <-  function(var_df){
 }
 ```
 
+
 ```{r}
 ## Getting random subset
 anno_df <- list(gatk = "data/happy_output/results/result_1.vcf.gz",
-                deep = "data/happy_output/results/result_2.vcf.gz") %>% 
+                deep = "data/happy_output/results/result_2.vcf.gz",
+                deepHap = "data/happy_output_deepVarHap/results/result_1.vcf.gz") %>% 
     map(get_var_df) %>% 
     map_dfr(annotate_var_df, .id = "callset") %>% 
     # Cleaner variant ids
@@ -442,60 +476,56 @@ var_random_df <- anno_df %>%
     dplyr::filter(var_cat != "other") %>% 
     mutate(CHROM = str_extract(variant, ".*(?=:)")) %>% 
     mutate(POS = str_extract(variant, "(?<=:).*(?=_)")) %>% 
-    filter(var_cat != "AM" | target_cat != "non-target" | callset != "deep") %>% 
     ## Random subsetting to include multiple variant groups
-    group_by(callset, var_cat, target_cat) %>% 
+    group_by(callset, var_cat, target_cat) %>%
     sample_n(size = 5) %>%
     ungroup() %>% 
     ## Includes ALTs at the same position
-    dplyr::select(callset, CHROM, POS) %>% 
+    dplyr::select(callset, CHROM, POS) %>%
     left_join(anno_df)
 
-## only 4 non-target AM
-var_random_df <- anno_df %>% 
-    dplyr::filter(var_cat != "other") %>% 
-    mutate(CHROM = str_extract(variant, ".*(?=:)")) %>% 
-    mutate(POS = str_extract(variant, "(?<=:).*(?=_)")) %>% 
-    filter(var_cat == "AM", target_cat == "non-target", callset == "deep") %>% 
-    ## Includes ALTs at the same position
-    dplyr::select(callset, CHROM, POS) %>% 
-    left_join(anno_df) %>% 
-    bind_rows(var_random_df)
-
 deepvar_random_df <- var_random_df %>% 
-    filter(callset == "deep") %>% 
-    add_column(CHROM_POS = NA, .after = "callset") %>% 
-    # mutate(CHROM_POS = paste(CHROM, POS, sep = ":")) %>% 
+    filter(callset == "deepHap") %>%
     mutate(variant = str_remove(variant, ".*_")) %>% 
     dplyr::rename(VAR = variant) %>% 
     dplyr::select(-Regions, -ALT) %>% 
     select(callset, target_cat, var_cat, CHROM, POS, everything())
 ```
 
-```{r fig.height = 12, fig.width = 12}
+
+Total number of variants in each variant category for target and non-target regions.
+```{r}
+anno_df %>%
+    dplyr::select(callset, CHROM, POS, target_cat, var_cat) %>% 
+    distinct() %>% 
+    group_by(callset, target_cat, var_cat) %>% 
+    summarise(count = n()) %>% 
+    spread(target_cat, count)
+```
+
+```{r fig.height = 12, fig.width = 12, fig.cap = "Heatmap with stratifications for the random variant subset selected for manual curation."}
 var_region_heatmap_df <- var_random_df %>% 
-    filter(callset == "deep") %>% 
-    dplyr::select(variant, var_cat, Regions) %>% 
+    filter(callset == "deepHap") %>%
+    dplyr::select(variant, var_cat, target_cat, Regions) %>% 
     mutate(region_df = map(Regions, as_data_frame)) %>% 
     dplyr::select(-Regions) %>% 
     unnest()
-
 var_region_heatmap_df %>% 
-    filter(!str_detect(value, "HG00[1,3,4,5]"), value !="CONF") %>% 
-    mutate(CHROM_POS = str_extract(variant, ".*(?=_)")) %>% 
-    mutate(ALT = str_extract(variant, "(?<=_).*")) %>% 
+    filter(!str_detect(value, "HG00[1,3,4,5]"), value !="CONF") %>%
+    mutate(CHROM_POS = str_extract(variant, ".*(?=_)")) %>%
+    mutate(ALT = str_extract(variant, "(?<=_).*")) %>%
     ggplot() + 
-    geom_raster(aes(y = value, x = CHROM_POS, fill = var_cat)) + 
-    theme(axis.text.x = element_text(angle = -90))
+    geom_raster(aes(y = value, x = CHROM_POS, fill = target_cat)) + 
+    theme(axis.text.x = element_text(angle = -90)) + 
+    facet_wrap(~var_cat, nrow = 1, scales = "free_x")
 ```
 
 
 ### Manual curation spreadsheets
 ```{r}
 tmp_tsv <- tempfile(fileext = ".tsv")
-deepvar_random_df %>%  
-    dplyr::select(-CHROM_POS) %>% 
-    add_column(PacBio = "", GIAB = "", Notes = "") %>% 
+deepvar_random_df %>%
+    add_column(PacBio = "", GIAB = "", Notes = "") %>%
     write_tsv(path = tmp_tsv)
 
 gs_upload(file = tmp_tsv, sheet_title = "hg002-ccs-deepvar-curate-JZ")
@@ -505,9 +535,10 @@ gs_upload(file = tmp_tsv, sheet_title = "hg002-ccs-deepvar-curate-NDO")
 
 
 ## Benchmark Region Expansion
+__TODO__
 
 # Conclusions
-
+__TODO__
 
 # Exploratory Analysis
 ## Metric Distributions
@@ -524,7 +555,6 @@ gatk_metric_df %>%
 
 
 ## Precision-Recall Relationship
-Relationships between precision and recall across strata
 ```{r message = FALSE, fig.cap = "Relationship between precision and recall for all stratifications, excluding different repeat units."}
 gg <- ext_trim_df %>% 
     filter(!str_detect(Subset, "unit=")) %>% 
@@ -544,7 +574,7 @@ plotly::ggplotly(gg)
 
 
 ## GC Impact
-GATK4 performance impacted by changes in GC more than DeepVariant. 
+GATK4 performance impacted by changes in GC more than DeepVariant and DeepVariant with haplotype information. 
 Trends in performance relative GC are potentially confounded with low complexity regions.  
 
 
@@ -586,7 +616,7 @@ ext_trim_df %>%
 #### Simple Repeats
 __TODO__ Fix order
 
-```{r fig.cap = "Benchmarking metrics for different types of simple repeats." }
+```{r fig.cap = "Benchmarking metrics for different simple repeat stratifications." }
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
@@ -649,9 +679,9 @@ ext_trim_df %>%
 ```
 
 #### All Repeats
-__TODO__ Fix order, add figure caption describing stratifications
+__TODO__ Fix order
 
-```{r fig.cap = "Benchmarking metrics for all repeats."}
+```{r fig.cap = "Benchmarking metrics for all repeat stratifications."}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
@@ -682,7 +712,7 @@ ext_trim_df %>%
 
 
 ### Segmental Duplications
-```{r fig.cap = "Segmental duplications"}
+```{r fig.cap = "Performance metrics for segmental duplication stratifications."}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
@@ -731,7 +761,7 @@ ext_trim_df %>%
 ```
 
 
-```{r fig.cap = "Mapping." }
+```{r fig.cap = "Performance metrics for mappability stratifications." }
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
@@ -757,7 +787,7 @@ ext_trim_df %>%
 ```
 
 ## In/ Not-In Comparisons
-```{r fig.cap = "Benchmarking metrics for in/not-in comparisons"}
+```{r fig.cap = "Benchmarking metrics for in/not-in stratification comparisons."}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
@@ -783,6 +813,7 @@ ext_trim_df %>%
 ```
 
 ## Performs well
+Statifications with high precision and recall  
 ```{r}
 ext_trim_df %>% 
     # filter(Subtype == "*") %>% 
