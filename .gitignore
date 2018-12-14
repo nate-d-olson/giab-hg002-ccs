@@ -2,3 +2,22 @@
 .RData
 .Rproj.user
 .httr-oauth
+
+## hap.py output
+*vcf.gz
+*bed
+*vcf
+*vcf.gz.tbi
+data/*/happy.log
+data/*/output.tar.gz
+data/*/output.html
+data/*/results/*roc*
+data/*/results/*json*
+
+
+
+## Large input data
+data/benchmark_extend
+data/callsets/*/*/*vcf.*
+data/callsets/*/*vcf.*
+data/callsets/{*,*/*}/*md5
