@@ -243,6 +243,7 @@ ext_trim_df %>%
 Impact of re-genotyping on benchmarking results (Table 1, Supplemental Fig R6-1)
 
 ```{r whatHapEff, fig.cap = "Impact of re-genotyping using WhatsHap on GATK4 and DeepVariant callset benchmark metrics. Diff- all difficult regions, and Not Diff - not in difficult regions."}
+
 ## Do we have all difficult regions not in HG002allgenomespecific
 high_level_strat <- c("*",
                        "alldifficultregions",
