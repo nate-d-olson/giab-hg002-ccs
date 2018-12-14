@@ -17,77 +17,84 @@ library(happyR)
 library(tidyverse)
 library(googlesheets)
 ```
+<!-- __TODO__ -->
+<!-- * revise text  -->
+<!-- * clean-up figures -->
+<!-- * summmarize results -->
+Potential Additional analysis
+1. Impact of re-genotyping
+2. Number of potential LINEs that CCs can correct
+3. Showing homopolymers primary error source not other context types.
 
-# Overview
-Analysis of small variant callsets generated from PacBio CCS data. 
-The long read - low error rate data can potentially correct mistakes in and expand the HG002 benchmark set.  
+# Background
 
+* Analysis of small variant callsets generated from PacBio CCS data. 
+* The long read - low error rate data can potentially correct mistakes in and expand the HG002 benchmark set.  
 * datasets - PacBio CCS 15kb libraries for HG002  
-* variant callsets - Three SNV+indel callsets: GATK4, DeepVariant, and DeepVariant with haplotype information. Variant calls were made against the GRCh37 reference.  
-* benchmarking - Callsets benchmarked against the HG002 V3.3.2 benchmark callset using the precisionFDA app, vcfeval + hap.py with GA4GH custom stratifications  
+* variant callsets
+  * Five SNV+indel callsets: 
+    * GATK4, 
+    * DeepVariant, 
+    * DeepVariant trained using with haplotype information, along with 
+    * GATK4 re-genotyped with WhatsHap,
+    * DeepVariant re-genotyped with WhatsHap. 
+* Variant calls were made against the GRCh37 reference.  
+* benchmarking - Callsets benchmarked against the HG002 V3.3.2 benchmark callset using the precisionFDA app, vcfeval + hap.py with GA4GH custom stratifications.  
+
+# Analysis Overview
+1. Variant caller performance against NIST HG002 v3.3.2
+1. Benchmark expansion estimate.  
+1. Identification of potential mistakes in current benchmark
+1. Errors in the CCS calls
+
 
 # Approach/ Methods
 ## Benchmarking 
-- Stratified comparison to our current small variant benchmark (v3.3.2).   
-- Identify where callsets perform well and poorly  
-- Identify where callsets perform well with a high fraction of calls in a stratification outside the benchmark regions.   
+- Stratified comparison to NIST HG002 small variant benchmark v3.3.2.   
+- Summarize overall performance
+- Identify where callsets perform well and poorly
+- Haplotype and re-genotype utility
+
 
 ## Manual Curation
 A number of false positive and negative sites were randomly sampled to further evaluate the potential for using CCS callsets to correct errors in benchmark sets.
 A total of 60 variants were randomly sampled for manual curation.  
 
-- 5 from each set  
-    - FP and FN  
-    - SNP and Indels  
-    - Target categories and other categories  
+- 5 from each set 
+  - FP and FN  
+  - SNP and Indels  
+  - Target categories and other categories  
 
 Along with 5 SNP and 5 Indel FP allele match errors.  
 
-Target categories - lowcmp_AllRepeats_gt95identity_slop5 and lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5
-
-<!-- 
-Especially for indels, most of the errors are in homopolymers, so it’s helpful to segregate these. 
-For SNPs, it might also be useful to select 10 random from the most difficult to map regions (map_l250_m0_e0), unless most of the non-homopolymer SNPs are in these regions. 
-Definitely let me know if your look at the data suggests a different strategy though! I can help with the manual curation when I return from AMP. 
--->
+Target categories - lowcmp_AllRepeats_gt95identity_slop5 and lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5  
+Target categories defined to include most homopolymers as based on our preliminary analysis these were the largest source of errors in the variant callsets. 
 
 ## Benchmark Region Expansion Estimate
-Estimating of how many extra variants and regions CCS might help add to the GIAB benchmark. Perhaps, regions with good MQ and coverage excluding homopolymers, and the CCS variants in these regions.  
+_Estimating number of how many extra variants and regions CCS might help add to the GIAB benchmark._
 
-<!-- - Need to work out approach -->
-<!--     - check out gvcf for good MQ and coverage   -->
+<!-- TODO - describe method used to calculate region and variant number -->
+Used CallableLoci - see `scripts/ccs_callableLoci.sh`  
+Subtracted stratifications for homopolymers and excluding HG002 SVs and segmental duplications (superdups) then compare to benchmark regions - see `scripts/calc_extend_bench.sh`. 
+Calculate (non-N) genome coverage for resulting regions. 
+This estimate represents an upper limit for what how much we expect the CCS data to expand the current benchmark regions.
+
+## Errors in NIST HG002 v3.3.2
+Example LINE (IGV screenshot) and an estimate of total count. 
 
 # Results 
 
 ## Benchmarking  
 
-<!-- - Subsets to look at  -->
-<!--     - `*`   -->
-<!-- 	- HG002allgenomespecific   -->
-<!-- 	- HG002allgenomespecificandifficult   -->
-<!-- 	- alldifficultregions   -->
-<!-- 	- decoy   -->
-<!-- 	- lowcmp_AllRepeats_51to200bp_gt95identity_merged_slop5   -->
-<!-- 	- lowcmp_AllRepeats_gt200bp_gt95identity_merged_slop5   -->
-<!-- 	- lowcmp_AllRepeats_gt95identity_slop5   -->
-<!-- 	- lowcmp_AllRepeats_lt51bpTRs_gt95identity_merged_slop5   -->
-<!-- 	- lowcmp_AllRepeats_lt51bp_gt95identity_merged_slop5   -->
-<!-- 	- lowcmp_SimpleRepeat_homopolymer_6to10   -->
-<!-- 	- lowcmp_SimpleRepeat_homopolymer_gt10   -->
-<!-- 	- lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5   -->
-<!-- 	- map_all   -->
-<!-- 	- map_l250_m0_e0   -->
-<!-- 	- notinHG002allgenomespecificandifficult   -->
-<!-- 	- notinalldifficultregions   -->
-<!-- 	- notinlowcmp_AllRepeats_gt95identity_slop5   -->
-<!-- 	- segdup   -->
-
 ```{r message = FALSE}
 ## Loading data
-hap_list <- c(paste0("data/happy_output/results/result_", c(1,2)),
-              "data/happy_output_deepVarHap/results/result_1") %>%
-    map(read_happy) %>% 
-    set_names(c("GATK4","DeepVariant", "DeepVarHap"))
+hap_list <- list(
+    GATK4 = "data/happy_output/results/result_1",
+    DeepVar = "data/happy_output/results/result_2",
+    DeepVarHap = "data/happy_output_deepVarHap/results/result_1",
+    GATK4_retyped = "data/happy_output_jebler_retyped/results/result_1",
+    DeepVar_retyped = "data/happy_output_jebler_retyped/results/result_2") %>%
+    map(read_happy)
 
 ## Creating a tidy data frame
 extend_df <- hap_list %>% 
@@ -101,37 +108,19 @@ ext_trim_df <- extend_df %>%
     filter(Subset.Size > 1000) %>% 
     ## Subset must have at least one variant in region
     filter(Subset.IS_CONF.Size > 0)
-
-## For initial set of plots
-gatk_ext_df <-  filter(ext_trim_df, 
-                       query_method == "GATK4", 
-                       Subtype == "*")
-
-gatk_metric_df <- gatk_ext_df %>% 
-    group_by(Type, Subset) %>% 
-    dplyr::select(contains("METRIC")) %>% 
-    gather("Metric", "Value", -Type, -Subset) 
-
 ```
 
 
 Overall high precision and recall for SNPs, and indels not in difficult regions. 
-DeepVariant performs consistently better than GATK4. 
-The high frac_NA for SNPs in all difficult regions along with relatively high precision and recall indicates that using this in the GIAB integration pipeline may result in expanded benchmark regions.  
-- Difficult regions with low indel recall and precision, specifically homopolymers and imperfect homopolymers 
 
-Other observations  
-- Lower than expected precision for mappable regions - potentially errors in benchmark set. Also interesting that precision is lower for m and e 0 than 1 or 2. Could this be related to Alu elements?
-
-
-```{r}
+<!-- TODO - fix bars starting from 1 -->
+```{r benchSummary, fig.cap = "Benchmarking performance metrics for CCS variant callsets for HG002 benchmark regions, Diff- all difficult regions, and Not Diff - not in difficult regions."}
 ## Do we have all difficult regions not in HG002allgenomespecific
 high_level_strat <- c("*",
                        "alldifficultregions",
-                       "notinHG002allgenomespecificandifficult",
                        "notinalldifficultregions")
 
-ext_trim_df %>% 
+bench_overview_df <- ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
     filter(Subset %in% high_level_strat) %>% 
@@ -142,32 +131,38 @@ ext_trim_df %>%
     mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
            Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
     filter(Metric != "Frac_NA") %>% 
-    ggplot() + geom_bar(aes(x = Subset, y = Value, fill = query_method), 
+  mutate(Subset = fct_recode(Subset, "All" = "*", 
+                             "Diff" = "alldifficultregions", 
+                             "Not Diff" = "notinalldifficultregions"))
+
+
+bench_overview_df %>% 
+    ggplot() + geom_col(aes(x = Subset, y = Value, fill = query_method), 
                         color = "grey40", width = 0.5, 
-                        position = "dodge", stat = "identity") + 
+                        position = "dodge") + 
+  scale_y_log10() +
     facet_grid(Type~Metric, scales = "free") + 
     theme_bw() + 
-    theme(axis.text.x = element_text(angle = -45, hjust = 0))
+    theme(legend.position = "bottom") + 
+  labs(fill = "Callset")
 ```
 
 ```{r}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
-    filter(Subset %in% high_level_strat) %>% 
+    filter(Subset %in% "*") %>% 
     filter(Filter == "PASS") %>% 
     rename(Callset = query_method,
-            Recall = METRIC.Recall, 
+           Recall = METRIC.Recall, 
            Precision = METRIC.Precision, 
-           F1 = METRIC.F1_Score, 
-           Frac_NA = METRIC.Frac_NA) %>%
-    dplyr::select(Callset, Type, Subset, Recall, Precision, F1, Frac_NA, Subset.Size) %>% 
-    arrange(Type, Subset) %>% 
+           F1 = METRIC.F1_Score) %>%
+    dplyr::select(Callset, Type, Recall, Precision, F1) %>% 
+    arrange(Type, -F1) %>% 
     knitr::kable(digits = 3, 
                  caption = "Metrics for high level stratifications.")
 ```
 
-high precision and recall
-```{r, fig.cap = "GATK4 and DeepVariant precision v. recall for a subset of the stratifications."}
+```{r, fig.cap = "Precision v. recall for a subset of the stratifications.", eval = FALSE}
 strat_of_interest <- c("*","HG002allgenomespecific",
                        "HG002allgenomespecificandifficult",
                        "alldifficultregions","decoy", 
@@ -185,7 +180,7 @@ strat_of_interest <- c("*","HG002allgenomespecific",
                        "notinlowcmp_AllRepeats_gt95identity_slop5","segdup")
 
 gg <- ext_trim_df %>% 
-    filter(Subtype == "*", Filter == "PASS") %>% 
+    filter(Type == "INDEL", Subtype == "*", Filter == "PASS") %>% 
     filter(Subset %in% strat_of_interest) %>% 
     ggplot() + 
     geom_point(aes(x = METRIC.Recall, 
@@ -193,13 +188,30 @@ gg <- ext_trim_df %>%
                    alpha = log10(Subset.Size),
                    text = Subset),
                shape = 19, stroke = 0.25) + 
-    facet_grid(query_method~Type) + 
+    facet_wrap(~query_method) + 
     theme_bw() + 
     labs(x = "Recall", y = "Precision")
 plotly::ggplotly(gg)
 ```
 
-```{r}
+```{r eval = FALSE}
+gg <- ext_trim_df %>% 
+    filter(Type == "SNP", Subtype == "*", Filter == "PASS") %>% 
+    filter(Subset %in% strat_of_interest) %>% 
+    ggplot() + 
+    geom_point(aes(x = METRIC.Recall, 
+                   y = METRIC.Precision,
+                   alpha = log10(Subset.Size),
+                   text = Subset),
+               shape = 19, stroke = 0.25) + 
+    facet_wrap(~query_method) + 
+    theme_bw() + 
+    labs(x = "Recall", y = "Precision")
+plotly::ggplotly(gg)
+```
+
+
+```{r eval = FALSE}
 ext_trim_df %>% 
     filter(Subtype == "*", Filter == "PASS") %>% 
     filter(Subset %in% strat_of_interest) %>% 
@@ -208,7 +220,7 @@ ext_trim_df %>%
 ```
 
 
-```{r}
+```{r eval = FALSE}
 ext_trim_df %>% 
     filter(Type == "INDEL", Filter == "PASS") %>% 
     filter(Subset %in% strat_of_interest) %>% 
@@ -217,11 +229,16 @@ ext_trim_df %>%
      DT::datatable()
 ```
 
-__TODO__ Additional figure showing stratifications where the methods perform well and poorly
+<!-- 
+__TODO__ Additional figure showing stratifications where the methods perform well and poorly 
 - stratifications with low recall and precision
+-->
 
 Performance metrics are consistent across homopolymer units for homopolymers between 6 and 10 bp but but varies for homopolymers greater than 10 bp. 
 
+<!-- 
+TODO - Only show for DeepVar Hap, add metrics for `*` and difficultregions 
+-->
 ```{r fig.cap = "Performance in homopolymers."}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
@@ -246,12 +263,15 @@ ext_trim_df %>%
                         position = "dodge", stat = "identity") + 
     facet_grid(Type~Metric, scales = "free") + 
     theme_bw() + 
-    theme(legend.position = "bottom") + 
+    theme(legend.position = "bottom",axis.text.x = element_text(angle = -45, hjust = 0)) + 
     labs(x = "Simple Repeat Type", fill = "Homopolymer Type")
 ```
 
+Performance varies by homopolymer unit.
+Similar performance is expected for A and T as observed.
+For G and C similar performance is not observed, inconsistent with expectation.
 
-```{r fig.cap = "DeepVariant performance metrics for homopolymers by unit."}
+```{r fig.cap = "DeepVariant performance metrics for homopolymers by unit.", eval = FALSE}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
@@ -273,7 +293,7 @@ ext_trim_df %>%
     mutate(Metric = if_else(Metric != "Frac_NA", paste("1 -", Metric), Metric),
            Value = if_else(Metric != "Frac_NA", 1 - Value, Value)) %>%
     filter(Metric != "Frac_NA") %>% 
-    filter(query_method == "DeepVariant") %>% 
+    filter(query_method == "DeepVar") %>% 
     ggplot() + geom_bar(aes(x = Size, y = Value, fill = Unit), 
                         color = "grey40", width = 0.5, 
                         position = "dodge", stat = "identity") + 
@@ -315,7 +335,7 @@ ext_trim_df %>%
     labs(x = "Simple Repeat Type", fill = "Callset")
 ```
 
-```{r fig.cap = "GATK4 performance metrics for homopolymers by unit."}
+```{r fig.cap = "GATK4 performance metrics for homopolymers by unit.", eval = FALSE}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
     filter(Filter == "PASS") %>% 
@@ -349,8 +369,8 @@ ext_trim_df %>%
 ```
 
 
-DeepVariant worse recall for longer insertions. 
-```{r}
+<!-- DeepVariant worse recall for longer insertions.  -->
+```{r eval = FALSE}
 ext_trim_df %>% 
     filter(Type == "INDEL") %>% 
     filter(Filter == "PASS") %>% 
@@ -379,8 +399,6 @@ ext_trim_df %>%
           legend.position = "bottom") + 
     labs(x = "Indel Subtype", fill = "Callset")
 ```
-
-
 
 
 ## Manual Curration 
@@ -492,18 +510,18 @@ deepvar_random_df <- var_random_df %>%
     select(callset, target_cat, var_cat, CHROM, POS, everything())
 ```
 
-
-Total number of variants in each variant category for target and non-target regions.
 ```{r}
+## Total number of variants in each variant category for target and non-target regions.
 anno_df %>%
     dplyr::select(callset, CHROM, POS, target_cat, var_cat) %>% 
     distinct() %>% 
     group_by(callset, target_cat, var_cat) %>% 
     summarise(count = n()) %>% 
-    spread(target_cat, count)
+    spread(target_cat, count) %>% 
+  filter(callset == "deepHap")
 ```
 
-```{r fig.height = 12, fig.width = 12, fig.cap = "Heatmap with stratifications for the random variant subset selected for manual curation."}
+```{r fig.height = 12, fig.width = 12, fig.cap = "Heatmap with stratifications for the random variant subset selected for manual curation.", eval = FALSE}
 var_region_heatmap_df <- var_random_df %>% 
     filter(callset == "deepHap") %>%
     dplyr::select(variant, var_cat, target_cat, Regions) %>% 
@@ -520,39 +538,257 @@ var_region_heatmap_df %>%
     facet_wrap(~var_cat, nrow = 1, scales = "free_x")
 ```
 
-
-### Manual curation spreadsheets
 ```{r}
-tmp_tsv <- tempfile(fileext = ".tsv")
-deepvar_random_df %>%
-    add_column(PacBio = "", GIAB = "", Notes = "") %>%
-    write_tsv(path = tmp_tsv)
-
-gs_upload(file = tmp_tsv, sheet_title = "hg002-ccs-deepvar-curate-JZ")
-gs_upload(file = tmp_tsv, sheet_title = "hg002-ccs-deepvar-curate-JM")
-gs_upload(file = tmp_tsv, sheet_title = "hg002-ccs-deepvar-curate-NDO")
+### Manual curation spreadsheets
+## Already generate files
+# tmp_tsv <- tempfile(fileext = ".tsv")
+# deepvar_random_df %>%
+#     add_column(PacBio = "", GIAB = "", Notes = "") %>%
+#     write_tsv(path = tmp_tsv)
+# 
+# gs_upload(file = tmp_tsv, sheet_title = "hg002-ccs-deepvar-curate-JZ")
+# gs_upload(file = tmp_tsv, sheet_title = "hg002-ccs-deepvar-curate-JM")
+# gs_upload(file = tmp_tsv, sheet_title = "hg002-ccs-deepvar-curate-NDO")
 ```
 
 
 ## Benchmark Region Expansion
-__TODO__
+<!-- __TODO_ clean-up code, incorporate reproducibility -->
+```{r}
+get_genome <- function(genome){
+    if (genome == "hs37d5"){
+        require(BSgenome.Hsapiens.1000genomes.hs37d5)
+        return(BSgenome.Hsapiens.1000genomes.hs37d5)
+    } else if (genome == "GRCh38") {
+        require(BSgenome.Hsapiens.NCBI.GRCh38)
+        return(BSgenome.Hsapiens.NCBI.GRCh38)
+    } else {
+        stop("Genome not `hs37d5` or `GRCh38`")
+    }
+}
+
+
+get_chrom_sizes <- function(genome = "hs37d5"){
+
+    genome_obj <- get_genome(genome)
+    
+    get_alpha_freq <- function(i){
+        genome_obj[[i]] %>% 
+            alphabetFrequency() %>% 
+            data.frame()
+    }
+    
+    alpha_freq_df <- as.list(1:22) %>% 
+        map_dfc(get_alpha_freq)
+    
+    colnames(alpha_freq_df) <- paste0("chr",1:22)
+    
+    alpha_freq_df <- alpha_freq_df %>% 
+        ## Removing bases not included in counts and non-standard bases
+        filter(chr1 >100) %>% 
+        add_column(base = c("A","C","G","T","N"))
+    
+    chromosome_lengths <- alpha_freq_df %>% 
+        tidyr::gather(key = "chrom", value = "nbases", -base) %>% 
+        group_by(chrom) %>% 
+        mutate(base_type = if_else(base == "N", "N", "non_N")) %>% 
+        group_by(chrom, base_type) %>% 
+        summarise(n_bases = sum(nbases)) %>% 
+        tidyr::spread(base_type, n_bases) %>% 
+        mutate(len = N + non_N) %>% 
+        dplyr::select(-N)
+    
+    ## data frame with total length and number of non-N bases
+    data_frame(chrom = "genome", 
+               non_N = sum(chromosome_lengths$non_N),
+               len = sum(chromosome_lengths$len)) %>% 
+        bind_rows(chromosome_lengths)
+}
+
+
+
+### High confidence coverage ###################################################
+### Bed chromosome coverage lengths from bed
+get_bed_cov_by_chrom <- function(bed_file){
+    ## Read as tsv
+    bed_df <- read_tsv(bed_file, 
+                       col_names = c("chrom","start","end","info"), col_types = "ciic") %>% 
+        ## Compute region size
+        mutate(region_size = end - start) %>% 
+        ## Only looking at Chromosomes 1-22
+        filter(chrom %in% c(1:22, paste0("chr", 1:22)))
+    
+    ## Compute bases per chromosome
+    chrom_cov <- bed_df %>% 
+        ## Changing to chromosome names to chr 
+        mutate(chrom = paste0("chr", chrom)) %>% 
+        group_by(chrom,info) %>% 
+        summarise(nbases = sum(region_size))
+
+    ## NBases data frame
+    data_frame(chrom = "genome",
+               nbases = NA, 
+               info = "") %>% 
+        bind_rows(chrom_cov)
+}
+
+chrom_size_df <- get_chrom_sizes()
+bench_extend_df <- get_bed_cov_by_chrom("data/benchmark_extend/ccs_extended.bed")
+```
+
+Supplemental Figure
+```{r}
+bench_extend_df %>% 
+    filter(info == "CALLABLE") %>% 
+    left_join(chrom_size_df) %>% 
+    mutate(extend = nbases/non_N) %>% 
+    select(chrom, nbases, extend) %>% 
+    mutate(chrom = str_remove(chrom, "chr"),
+           chrom = factor(chrom, levels = 1:22)) %>%  
+    ggplot() + geom_bar(aes(x = chrom, y = extend), stat = "identity") + 
+  theme_bw() +
+  labs(x = "Chromosome", y = "Proportion Extend")
+```
+
+Extend is the fraction of additional non-N bases in the genome that may be covered by benchmark set when using CCS DeepVariant with haplotype callset to generate benchmark regions.
+```{r}
+bench_extend_df %>% 
+    filter(info == "CALLABLE") %>% 
+    summarise(nbases = sum(nbases)) %>% 
+    mutate(chrom = "genome") %>% 
+    left_join(chrom_size_df) %>% 
+    mutate(extend = nbases/non_N)
+```
+
+### Number of variants in extended regions
+```
+bcftools view -R ccs_extended.bed ../kolesnikov/pacbio-15kb-hapsort-wgs.vcf.gz -o deepvar_extend_bcftools.vcf
+```
+
+<!-- TODO from bcftools stats, will want to replace with R code -->
+```
+SN      0       number of samples:      1
+SN      0       number of records:      418649
+SN      0       number of no-ALTs:      0
+SN      0       number of SNPs: 210184
+SN      0       number of MNPs: 0
+SN      0       number of indels:       208691
+SN      0       number of others:       0
+SN      0       number of multiallelic sites:   764
+SN      0       number of multiallelic SNP sites:       123
+```
+
+## Errors in NIST HG002 v3.3.2
+False negatives in LINEs were frequently observed. 
+For example LINE at 21:42288851, where paired end short reads have no evidence but CC and mate-pair do (Fig. __ADD REF__).
+Additionally, 10x does for some other phased SNPs in the region. 
+Including PacBio CCS callsets as an additional input for the NIST integration pipeline can potentially correct errors in LINEs.
+__TODO estimate for total number of errors in LINEs__
+<!-- ![lineIGV]("data/igv_images/igv_snapshot_LINE_21_42288851.png") -->
+<!-- ![lineIGVzoom]("data/igv_images/igv_snapshot_LINE_21_42288851_zoomout.png") -->
+
+## Characterizing Errors in CCS
+Most variant call errors in CCS callsets were adjacent to homopolymers, 
+__TODO__ SNP estimate with UCI-LCI and INDEL estimate with UCI and LCI (Table ccsErrorEst).
+__TODO__ relationship between number of AM error, FP, and FN.
+
+```{r}
+## Get JZ manual curation results
+mc_jz <- gs_title(x = "hg002-ccs-deepvar-curate-JZ - November 19, 2:38 AM")
+mc_df <- gs_read(ss = mc_jz)
+
+mc_error <- mc_df %>% 
+  group_by(target_cat, var_cat, PacBio) %>% 
+  summarise(count = n()) %>% 
+  filter(PacBio != "-") %>% 
+  spread(PacBio, count, fill = 0) %>% 
+  mutate(error_rate = N/(N + Y))
+
+var_counts <- anno_df %>%
+  filter(callset == "deepHap") %>% 
+  dplyr::select(callset, CHROM, POS, target_cat, var_cat) %>% 
+  distinct() %>% 
+  group_by(callset, target_cat, var_cat) %>% 
+  summarise(count = n()) 
+```
+
+<!-- TODO ## A better approach is accounting for uncertainty in error rate as well as number of correct variants -->
+```{r ccsErrorEst}
+var_counts %>% 
+  left_join(mc_error) %>% 
+  filter(var_cat != "other") %>% 
+  mutate(lci = qbinom(p = 0.025, size = count, prob = error_rate),
+         uci = qbinom(p = 0.975, size = count, prob = error_rate)) %>% 
+  select(-callset, -N, -Y) %>% 
+  knitr::kable(caption = "Estimated number of variant call errors in the DeepVariant callset with haplotype informed model.")
+```
+
+<!-- Nate, for the record, below are the commands I used to get the numbers of FPs in each category.  I suspect you could get these numbers pretty easily in your current R script, since essentially I was getting an estimate of the total number of variants in each category you selected 5 variants from for the manual curation.  Rather than reproducing what I did, which was imprecise, it would be great if you’d calculate the # of AM’s, FPs, and FNs in target and non-target for SNPs and indels.  It could also be useful to subset these further by those in map_all and not in map_all. -->
+
+<!-- 1. Number of FP SNPs for homopolymer stratifications -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*SNP' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | grep omopol | wc -l -->
+<!--      414 -->
+<!-- ``` -->
+
+<!-- 2. Number of FP INDELS for homopolymer stratifications  -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*INDEL' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | grep omopol | wc -l -->
+<!--     8674 -->
+<!-- ``` -->
+
+<!-- 3. Number of FP INDEL in homopolymer and repeat strats defined below -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*INDEL' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | grep -v omopol | grep -v lowcmp_AllRepeats_lt51bpTRs_gt95identity_merged_slop5 | grep lowcmp_AllRepeats_lt51bp_gt95identity_merged_slop5 | wc -l -->
+<!--      328 -->
+<!-- ``` -->
+
+<!-- 4. Number of FP SNP in homopolymer and repeat strats defined below -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*SNP' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | grep -v omopol | grep -v lowcmp_AllRepeats_lt51bpTRs_gt95identity_merged_slop5 | grep lowcmp_AllRepeats_lt51bp_gt95identity_merged_slop5 | wc -l -->
+<!--       29 -->
+<!-- ``` -->
+
+<!-- 5. Total FP SNPs -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*SNP' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | wc -l -->
+<!--     2684 -->
+<!-- ``` -->
+
+<!-- 6. Total FP INDELs -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*INDEL' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | wc -l -->
+<!--     9822 -->
+<!-- ``` -->
+
+<!-- 7. Number of FP SNP in homopolymer or lowcmp_AllRepeats_gt95identity_merged_slop -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*SNP' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | grep 'omopol\|,lowcmp_AllRepeats_gt95identity_merged_slop5' | wc -l -->
+<!--      414 -->
+<!-- ``` -->
+<!-- 8. Number of FP INDEL in homopolymer or lowcmp_AllRepeats_gt95identity_merged_slop -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*SNP' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | grep 'omopol\|,lowcmp_AllRepeats_gt95identity_slop5' | wc -l -->
+<!--      565 -->
+<!-- ``` -->
+
+<!-- 9. Number of FP SNP in homopolymer or lowcmp_AllRepeats_gt95identity_slop -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*INDEL' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | grep 'omopol\|,lowcmp_AllRepeats_gt95identity_slop5' | wc -l -->
+<!--     9627 -->
+<!-- ``` -->
+
+<!-- 10. Number of FP SNP in homopolymer or lowcmp_AllRepeats_gt95identity_slop and map_all -->
+<!-- ``` -->
+<!-- PN105860:triounion_171212 jzook$ zgrep 'FP.*SNP' /Users/jzook/Documents/National\ Institute\ of\ Standards\ and\ Technology\ \(NIST\)/Olson\,\ Nathanael\ David\ \(Fed\)\ -\ giab-hg002-ccs/data/happy_output_deepVarHap/results/result_1.vcf.gz | grep -v 'omopol\|,lowcmp_AllRepeats_gt95identity_slop5' | grep ,map_all | wc -l -->
+<!--            2028 -->
+<!-- ``` -->
+
 
 # Conclusions
 __TODO__
 
 # Exploratory Analysis
-## Metric Distributions
-```{r message = FALSE, warning = FALSE, fig.cap = "Metric value distributions for all stratifications."}
-gatk_metric_df %>% 
-    filter(Metric != "METRIC.Frac_NA") %>%
-    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
-    ggplot() + 
-    geom_histogram(aes(x = Value)) + 
-    facet_grid(Type~Metric, scales = "free") + 
-    theme_bw()
-```
-
-
 
 ## Precision-Recall Relationship
 ```{r message = FALSE, fig.cap = "Relationship between precision and recall for all stratifications, excluding different repeat units."}
@@ -614,7 +850,7 @@ ext_trim_df %>%
 ### Low Complexity 
 
 #### Simple Repeats
-__TODO__ Fix order
+<!-- __TODO__ Fix order -->
 
 ```{r fig.cap = "Benchmarking metrics for different simple repeat stratifications." }
 ext_trim_df %>% 
@@ -646,8 +882,7 @@ ext_trim_df %>%
 ```
 
 #### TRDB
-__Q__ Difference between all_gt95identity_merged and all_merged  
-__TODO__ Fix order  
+<!-- __TODO__ Fix order   -->
 
 ```{r fig.cap = "Benchmarking metrics for TRDB." }
 ext_trim_df %>% 
@@ -679,7 +914,7 @@ ext_trim_df %>%
 ```
 
 #### All Repeats
-__TODO__ Fix order
+<!-- __TODO__ Fix order -->
 
 ```{r fig.cap = "Benchmarking metrics for all repeat stratifications."}
 ext_trim_df %>% 
@@ -734,8 +969,8 @@ ext_trim_df %>%
 ```
 
 ### Mappping
-__TODO__ Fix order and clean-up names  
-__Q__ What is Siren  
+<!-- __TODO__ Fix order and clean-up names   -->
+
 ```{r}
 ext_trim_df %>% 
     filter(Subtype == "*") %>% 
@@ -827,16 +1062,54 @@ ext_trim_df %>%
 ```
 
 
+# Callset MD5 Check
+Matching md5 check sums between vcf files run on benchmarking app and vcf files in "final_callsets". 
+The MD5 check sums match therefore we do not need to run the benchmarking app on the files in "final_callsets". 
+```{r}
+vcf_md5 <- c("b6ce8fbd50b983ea4a3bad5e4d4fc18b  jebler/phased/pacbio_minimap2_15kb_69500_b37_wgs.all.callset_phased.vcf.gz",
+"120a15cc95138cd5f1ed107e1e1cd85d  jebler/phased/pacbio_minimap2_15kb_69500_b37_wgs.all.callset_phased.vcf.gz.tbi",
+"bbb714c95ca7e6e8369ccfb22e4ae586  jebler/phased/pacbio_minimap2_15kb_69500_b37_wgs.all.retyped_phased.vcf.gz",
+"000c980bbc4fb7040fe20947d1762ee3  jebler/phased/pacbio_minimap2_15kb_69500_b37_wgs.all.retyped_phased.vcf.gz.tbi",
+"5a049ef09dd22d07b8378668276b4bad  jebler/retyped/pacbio_minimap2_15kb_69500_b37_wgs.all.retyped.vcf.gz",
+"f90a2d11cb8135dc951c2c9d5925f816  jebler/retyped/pacbio_minimap2_15kb_69500_b37_wgs.all.retyped.vcf.gz.tbi",
+"f756d13a231e660909d16bc69b355059  jebler/retyped/pacbio_pbmm2_15kb_GATK4_hs37d5.all.retyped.vcf.gz",
+"f764e0c44772f0db7b241e6c48bbfaba  jebler/retyped/pacbio_pbmm2_15kb_GATK4_hs37d5.all.retyped.vcf.gz.tbi",
+"5a049ef09dd22d07b8378668276b4bad  for_jzook/final_callsets/DeepVariant-CCS-WhatsHap.vcf.gz",
+"f90a2d11cb8135dc951c2c9d5925f816  for_jzook/final_callsets/DeepVariant-CCS-WhatsHap.vcf.gz.tbi",
+"166703dfb3c15b201c5886dde0ace70b  for_jzook/final_callsets/DeepVariant-CCS-hapsort.vcf.gz",
+"f868b7e2ecd42d72e6223a9fc9819246  for_jzook/final_callsets/DeepVariant-CCS-hapsort.vcf.gz.tbi",
+"a21eb94b7d8ee530244d6d4a28194a59  for_jzook/final_callsets/DeepVariant-CCS.vcf.gz",
+"db771e12c949639c0015ad5eea7edf7f  for_jzook/final_callsets/DeepVariant-CCS.vcf.gz.tbi",
+"f756d13a231e660909d16bc69b355059  for_jzook/final_callsets/GATKHC-WhatsHap.vcf.gz",
+"f764e0c44772f0db7b241e6c48bbfaba  for_jzook/final_callsets/GATKHC-WhatsHap.vcf.gz.tbi",
+"0075ff0ca7df131c0b02e426847c28cf  for_jzook/final_callsets/GATKHC.vcf.gz",
+"8c1432ec042fd7dc8c14329cd1a37100  for_jzook/final_callsets/GATKHC.vcf.gz.tbi",
+"166703dfb3c15b201c5886dde0ace70b  kolesnikov/pacbio-15kb-hapsort-wgs.vcf.gz",
+"16577af07101b1105dab9e42d95c71c8  kolesnikov/pacbio-15kb-hapsort-wgs.vcf.gz.csi",
+"a21eb94b7d8ee530244d6d4a28194a59  kolesnikov/pacbio_minimap2_15kb_69500_b37_wgs.vcf.gz",
+"0075ff0ca7df131c0b02e426847c28cf  wrowell/pacbio_pbmm2_15kb_GATK4_hs37d5.vcf.gz",
+"8c1432ec042fd7dc8c14329cd1a37100  wrowell/pacbio_pbmm2_15kb_GATK4_hs37d5.vcf.gz.tbi",
+"17fc4f33579bb916a130ebe865b8f128  wrowell/pacbio_pbmm2_15kb_GATK4_hs37d5_whatshap_phased.vcf.gz",
+"89c63e379a19cd7616f605bdfb60ca1e  wrowell/pacbio_pbmm2_15kb_GATK4_hs37d5_whatshap_phased.vcf.gz.tbi")
+
+data_frame(vcf_md5) %>% separate(vcf_md5, c("md5","vcffile"), 
+                                 sep = "  ", 
+                                 remove = TRUE) %>% 
+  arrange(md5) %>% 
+  filter(str_detect(vcffile, "vcf.gz$")) %>% 
+  filter(!str_detect(vcffile, "phased"))
+```
+
 
 # Session Information
 ## System Information
 ```{r}
-s_info <- devtools::session_info(include_base = FALSE)
-pander::pander(s_info$platform)
+sessioninfo::platform_info()
 ```
+
 
 ## Package Versions
 ```{r}
-s_info$packages %>% filter(`*` == "*") %>% dplyr::select(-`*`) %>%
+sessioninfo::package_info() %>% 
     knitr::kable(booktabs = TRUE)
 ```
