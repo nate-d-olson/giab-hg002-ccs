@@ -131,22 +131,6 @@ Metrics for high level comparison
 benchmark_metrics_tbl
 ```
 
-### Indel Stratification
-* Stratification indel numbers for homopolymers > 2bp - JZ will provide code and input files for analysis
-    - for use in estimating the percentage of discordant indels in homopolymer runs 
-
-
-### Supplemental Figure R4-1 - Key Stratification Results
-* Add text with benchmark stratification results (1 - 2 sentences)
-* Supplemental Figure R4-1: Key stratification results including overview and homopolymers
-
-Overall high precision and recall for SNPs, and indels not in difficult regions. 
-
-<!-- TODO 
-- Combine plots (multipanel?)
-- Additional stratifications - map250 (proxy for LINES?), tandem repeats?
-- fix bars starting from 1 
--->
 ```{r benchSummary, fig.cap = "Benchmarking performance metrics for CCS variant callsets for HG002 benchmark regions, Diff- all difficult regions, and Not Diff - not in difficult regions."}
 ## Do we have all difficult regions not in HG002allgenomespecific
 high_level_strat <- c("*",
@@ -170,15 +154,103 @@ bench_overview_df <- ext_trim_df %>%
 
 
 bench_overview_df %>% 
-    ggplot() + geom_col(aes(x = Subset, y = Value, fill = query_method), 
-                        color = "grey40", width = 0.5, 
-                        position = "dodge") + 
+    ggplot(aes(x = Subset, y = Value, 
+               fill = query_method, group=query_method)) + 
+  geom_linerange(aes(ymin = 0.00001, ymax = Value),
+                     position=position_dodge(width=0.5)) + 
+  geom_point(shape = 21, color = "grey40", position=position_dodge(width=0.5)) + 
   scale_y_log10() +
     facet_grid(Type~Metric, scales = "free") + 
     theme_bw() + 
     theme(legend.position = "bottom") + 
+  annotation_logticks(sides = "l") +
   labs(fill = "Callset")
 ```
+
+```{r}
+ggsave("results/benchmark_highlevel_strats.png", 
+       dpi = 600,width = 6, height = 3)
+```
+
+### Indel Stratification
+__TODO__
+* Stratification indel numbers for homopolymers > 2bp - JZ will provide code and input files for analysis
+    - for use in estimating the percentage of discordant indels in homopolymer runs 
+
+
+### Supplemental Figure R4-1 - Key Stratification Results
+* Add text with benchmark stratification results (1 - 2 sentences)
+* Supplemental Figure R4-1: Key stratification results including overview and homopolymers
+
+Overall high precision and recall for SNPs, and indels not in difficult regions. 
+
+```{r fig.cap = "Performance metrics stratification results."}
+stratifications <- c("*",
+                       "alldifficultregions",
+                       "lowcmp_AllRepeats_gt95identity_slop5",
+                       "lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5",
+                       # "lowcmp_SimpleRepeat_homopolymer_6to10",
+                       # "lowcmp_SimpleRepeat_homopolymer_gt10",
+                       # "map_l250_m0_e0",
+                       "notinalldifficultregions",
+                       "notinlowcmp_AllRepeats_gt95identity_slop5")
+
+bench_strat_df <- ext_trim_df %>% 
+    filter(Subtype == "*", query_method == "DeepVar") %>% 
+    filter(Filter == "PASS") %>% 
+    filter(Subset %in% stratifications) %>% 
+    dplyr::select(Type, Subset, query_method,
+                  contains("METRIC"), Subset.Size)  %>% 
+    gather("Metric","Value", -Type, -Subset, 
+           -query_method, -Subset.Size) %>% 
+    mutate(Metric = str_remove(Metric, "METRIC.")) %>% 
+    mutate(Metric = if_else(Metric != "Frac_NA", 
+                            paste("1 -", Metric), Metric),
+           Value = if_else(Metric != "Frac_NA", 
+                           1 - Value, Value)) %>%
+    filter(Metric != "Frac_NA") %>% 
+  ## Relevel factors
+  mutate(Subset = fct_recode(Subset, 
+                             "All" = "*", 
+                             "Diff" = "alldifficultregions", 
+                             "Not Diff" = "notinalldifficultregions",
+                             "All Reps." = "lowcmp_AllRepeats_gt95identity_slop5",
+                             "Not All Reps." = "notinlowcmp_AllRepeats_gt95identity_slop5",
+                       "Imp. Homopolymer" = "lowcmp_SimpleRepeat_imperfecthomopolymer_gt10_slop5" #,
+                       # "Homopolymer 6 - 10 bp" = "lowcmp_SimpleRepeat_homopolymer_6to10",
+                       # "Homopolymer >10 bp" = "lowcmp_SimpleRepeat_homopolymer_gt10",
+                       # "Map 250" = "map_l250_m0_e0"
+                       )
+         )
+
+
+bench_strat_df %>% 
+    ggplot(aes(x = Subset, y = Value, 
+               fill = Subset, 
+               group=query_method)) + 
+  geom_linerange(aes(ymin = 0.000025, ymax = Value),
+                     position=position_dodge(width=0.5)) + 
+  geom_point(shape = 21, color = "grey20", position=position_dodge(width=0.5)) + 
+  scale_y_log10() +
+  scale_fill_brewer(type = "qual", palette = 2) +
+    facet_grid(Type~Metric, scales = "free") + 
+    theme_bw() + 
+    theme(legend.position = "bottom", 
+          # axis.text.x = element_text(angle = -45, hjust = 0)
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank()) + 
+  annotation_logticks(sides = "l") +
+  labs(fill = "Stratifications")
+```
+
+```{r}
+ggsave("results/benchmark_strats.png", 
+       dpi = 600,width = 8, height = 4)
+```
+
+
+Based on stratified analysis of the benchmarking results variant caller accuracy was poor for low complexity repeats with greater than 95% similarity (including homopolymers and tandem repeats). Variant caller performance was similar for indels when excluding low complexity repeats with > 95% similarity to when excluding all difficult regions indicating that this stratification is responsible for most of the discrepancies between the HG002 v3.3.2 benchmark callset and the CCS callsets. 
+
 
 
 ```{r fig.cap = "Performance in homopolymers."}
@@ -634,10 +706,10 @@ deepvar_random_df <- var_random_df %>%
 anno_df %>%
     dplyr::select(callset, CHROM, POS, target_cat, var_cat) %>% 
     distinct() %>% 
-    group_by(callset, target_cat, var_cat) %>% 
+    filter(callset == "deepHap") %>% 
+    group_by(target_cat, var_cat) %>% 
     summarise(count = n()) %>% 
-    spread(target_cat, count) %>% 
-  filter(callset == "deepHap")
+    spread(target_cat, count) 
 ```
 
 ```{r fig.height = 12, fig.width = 12, fig.cap = "Heatmap with stratifications for the random variant subset selected for manual curation.", eval = FALSE}
@@ -833,12 +905,30 @@ var_counts <- anno_df %>%
 
 <!-- TODO ## A better approach is accounting for uncertainty in error rate as well as number of correct variants -->
 ```{r ccsErrorEst}
-var_counts %>% 
+error_est_df <- var_counts %>% 
   left_join(mc_error) %>% 
   filter(var_cat != "other") %>% 
-  mutate(lci = qbinom(p = 0.025, size = count, prob = error_rate),
-         uci = qbinom(p = 0.975, size = count, prob = error_rate)) %>% 
-  select(-callset, -N, -Y) %>% 
+  mutate(bconf = map(Y, Hmisc::binconf, n = 5),
+         est = map_dbl(bconf, 1) * count,
+         lci = map_dbl(bconf, 2) * count,
+         uci = map_dbl(bconf, 3) * count)
+```
+
+```{r}
+sum(error_est_df$count)
+error_est_df %>% filter(target_cat == "non-target",
+                        !str_detect(var_cat, "AM")) %>% 
+  .$est %>% sum()
+error_est_df %>% filter(target_cat == "non-target",
+                        !str_detect(var_cat, "AM")) %>% .$lci %>% sum()
+error_est_df %>% filter(target_cat == "non-target",
+                        !str_detect(var_cat, "AM")) %>% .$uci %>% sum()
+```
+2434 (1313 - 2611)
+
+```{r ccsErrorEst}
+error_est_df %>% 
+  select(-callset, -bconf) %>% 
   knitr::kable(caption = "Estimated number of variant call errors in the DeepVariant callset with haplotype informed model.")
 ```
 
