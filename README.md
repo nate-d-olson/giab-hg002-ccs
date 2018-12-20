@@ -10,20 +10,15 @@ For CCS Paper
 ============================================
 * Read edit draft
 * SECTION: Small variant detection
-    * Total number of variants called for each callset - JZ
+    * Total number of variants called for each callset using QUERY.TOTAL numbers
     * Run happy on new callsets - waiting on callsets - NDO
         * Update benchmarking numbers in table 1 and text - NDO
     * Stratification indel numbers for homopolymers > 2bp - JZ will provide code and input files for analysis
         - for use in estimating the percentage of discordant indels in homopolymer runs 
 * SECTION: Revising and expanding GIAB
-    * Table of manually curated variants - NDO
-        * Table legend
-        * Clean-up googlesheet table for manuscript
+    * Revised text based on recommendation from Mark Depristo (also discusion text)
     * Check number of variants in expanded region - NDO
     * IGV screenshot for supplemental - representative variant from manual curation - NDO/JZ
-* SECTION: Online Methods
-    * Benchmarking and strafication methods - NDO
-    * expansion estimates - NDO
 
 Low priority
 ============================================
