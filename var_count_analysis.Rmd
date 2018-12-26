@@ -65,3 +65,12 @@ ext_trim_df %>% filter(Subtype == "*", Subset == "*", Filter == "PASS") %>%
     select(query_method, Type, QUERY.TOTAL, QUERY.UNK) 
 ```
 
+```{r}
+ext_trim_df %>% filter(Subtype == "*", Subset == "*", Filter == "PASS") %>% 
+    arrange(Type, query_method)  %>% 
+    mutate(bias_rate = (QUERY.TP - TRUTH.TP)/ TRUTH.TP,
+           Inside = QUERY.TOTAL - QUERY.UNK,
+           Outside = QUERY.UNK) %>% 
+    select(query_method, Type, Inside, Outside, bias_rate)
+```
+
